@@ -1,0 +1,17 @@
+# Environments
+yool/
+
+# Datasets and Artifacts
+data/raw/*.csv
+data/processed/*.csv
+output/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE configs
+.vscode/
+pyrightconfig.json
