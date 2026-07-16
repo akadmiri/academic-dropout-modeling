@@ -2,7 +2,7 @@ import pandas as pd
 
 
 def feature_selection(
-    df: pd.DataFrame, importance_path: str, threshold: float = 0.015
+    df: pd.DataFrame, importance_path: str, threshold: float = 0.01
 ) -> pd.DataFrame:
     """Drops columns that provide no information about the target variable based on feature importance scores."""
 

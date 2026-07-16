@@ -6,7 +6,7 @@ A temporal binary classification pipeline predicting student dropout (décrochag
 ## Architecture & Methodology
 - **Data Ingestion:** Extracted from the UCI Machine Learning Repository via API.
 - **Feature Engineering:** Calculated first-order derivatives (velocity) of academic performance (`Efficiency Delta`, `Grade Delta`) to capture temporal degradation prior to dropout.
-- **Dimensionality Reduction:** Dynamically pruned macroeconomic and socio-demographic noise (Information Gain < 0.015) using a baseline XGBoost evaluator to prevent data leakage and overfitting.
+- **Dimensionality Reduction:** Dynamically pruned macroeconomic and socio-demographic noise (Information Gain < 0.01) using a baseline XGBoost evaluator to prevent data leakage and overfitting.
 - **Model Evaluation:** Stratified 5-Fold Cross-Validation targeting PR-AUC and Recall. Applied a custom probability threshold to isolate the minority class effectively.
 
 ## Performance Metrics (Hold-out Test Set)
