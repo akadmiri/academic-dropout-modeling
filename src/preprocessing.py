@@ -1,8 +1,9 @@
-from typing import Tuple
+# from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+
+# from sklearn.model_selection import train_test_split
 
 
 def load_data(input_path: str, target_col: str = "Target") -> pd.DataFrame:
@@ -38,10 +39,13 @@ def delta(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+"""
 def split_data(
     df: pd.DataFrame, target_col: str = "churn_target", test_size: float = 0.2
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Splits the data into training and testing sets, while preserving the exact base rate of the target class."""
+    """
+# Splits the data into training and testing sets, while preserving the exact base rate of the target class.
+"""
     train_df, test_df = train_test_split(
         df, test_size=test_size, stratify=df[target_col], random_state=10
     )
@@ -62,3 +66,4 @@ if __name__ == "__main__":
     print(
         f"Processed dataset saved: {train_data.shape[0]} training rows, {test_data.shape[0]} testing rows"
     )
+"""
