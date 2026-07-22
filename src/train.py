@@ -102,4 +102,5 @@ if __name__ == "__main__":
                                           display_labels=["Graduate", "Dropout"], ax=axes[1])
     axes[1].set_title("XGBoost")
     plt.tight_layout()
+    plt.savefig("output/Confusion_matrix.png")
     plt.show()
