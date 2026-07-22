@@ -1,9 +1,8 @@
-# from typing import Tuple
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
-
-# from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
 
 
 def load_data(input_path: str, target_col: str = "Target") -> pd.DataFrame:
@@ -26,26 +25,21 @@ def delta(df: pd.DataFrame) -> pd.DataFrame:
     a1 = df["Curricular units 1st sem (approved)"]
     df["Efficiency 1st sem"] = np.where(e1 > 0, a1 / e1, 0)
 
-    # Semester 2 efficiency
-    e2 = df["Curricular units 2nd sem (enrolled)"]
-    a2 = df["Curricular units 2nd sem (approved)"]
-    df["Efficiency 2nd sem"] = np.where(e2 > 0, a2 / e2, 0)
-
-    df["Efficiency Delta"] = df["Efficiency 2nd sem"] - df["Efficiency 1st sem"]
-    df["grade delta"] = (
-        df["Curricular units 2nd sem (grade)"] - df["Curricular units 1st sem (grade)"]
+    ev1 = df["Curricular units 1st sem (evaluations)"]
+    gr1 = df["Curricular units 1st sem (grade)"]
+    df["Evaluation status 1st sem"] = np.select(
+        condlist=[ev1 == 0, (ev1 > 0) & (gr1 == 0)],
+        choicelist=["no_evaluation", "evaluated_zero"],
+        default="positive_grade",
     )
 
     return df
 
 
-"""
 def split_data(
     df: pd.DataFrame, target_col: str = "churn_target", test_size: float = 0.2
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-# Splits the data into training and testing sets, while preserving the exact base rate of the target class.
-"""
+    """Splits the data into training and testing sets, while preserving the exact base rate of the target class."""
     train_df, test_df = train_test_split(
         df, test_size=test_size, stratify=df[target_col], random_state=10
     )
@@ -54,7 +48,6 @@ def split_data(
 
 if __name__ == "__main__":
     input_path = "data/raw/dropout.csv"
-    output_path = "data/processed/dropout_processed.csv"
 
     clean_df = load_data(input_path)
     delta_df = delta(clean_df)
@@ -66,4 +59,3 @@ if __name__ == "__main__":
     print(
         f"Processed dataset saved: {train_data.shape[0]} training rows, {test_data.shape[0]} testing rows"
     )
-"""
