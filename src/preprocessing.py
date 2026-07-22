@@ -46,12 +46,44 @@ def split_data(
     return train_df, test_df
 
 
+LEAKAGE_COLUMNS = [
+    # Semester 2 raw columns — unavailable at prediction time for a currently-enrolled student
+    "Curricular units 2nd sem (credited)",
+    "Curricular units 2nd sem (enrolled)",
+    "Curricular units 2nd sem (evaluations)",
+    "Curricular units 2nd sem (approved)",
+    "Curricular units 2nd sem (without evaluations)",
+    "Curricular units 2nd sem (grade)",
+]
+
+NEGLIGIBLE_SIGNAL_COLUMNS = [
+    # Cramér's V / Cohen's d ~0 and not statistically significant in the exploration notebook.
+    "Unemployment rate",
+    "GDP",
+    "Inflation rate",
+    "International",
+    "Educational special needs",
+    "Nacionality",
+]
+
+
+def select_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Enforces the semester-1-only decision boundary and drops columns with negligible
+    target association."""
+
+    to_drop = [
+        c for c in LEAKAGE_COLUMNS + NEGLIGIBLE_SIGNAL_COLUMNS if c in df.columns
+    ]
+    return df.drop(columns=to_drop)
+
+
 if __name__ == "__main__":
     input_path = "data/raw/dropout.csv"
 
     clean_df = load_data(input_path)
     delta_df = delta(clean_df)
-    train_data, test_data = split_data(delta_df)
+    selected_df = select_features(delta_df)
+    train_data, test_data = split_data(selected_df)
 
     train_data.to_csv("data/processed/train_data.csv", index=False)
     test_data.to_csv("data/processed/test_data.csv", index=False)
