@@ -82,6 +82,7 @@ ONE_HOT_COLUMNS = [
     "Application mode",
     "Marital Status",
     "Previous qualification",
+    "Evaluation status 1st sem",
 ]
 TARGET_ENCODE_COLUMNS = [
     "Father's occupation",
