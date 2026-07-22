@@ -2,6 +2,7 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, classification_report
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from xgboost import XGBClassifier
 
 TARGET_COL = "churn_target"
@@ -17,7 +18,7 @@ def load_processed(
     return X_train, X_test, y_train, y_test
 
 
-def train_baseline(X_train, y_train):
+def train_log(X_train, y_train):
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     model = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=10)
@@ -54,14 +55,36 @@ def evaluate_xgb(model, X_test, y_test):
     print(classification_report(y_test, y_pred, target_names=["Graduate", "Dropout"]))
     print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_proba):.3f}")
 
+# Cross Validation: 
+def compare_models(X_train, y_train, n_splits=5):
+    cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=10)
+
+    logreg = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=10)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    logreg_scores = cross_val_score(logreg, X_train_scaled, y_train, cv=cv, scoring="average_precision")
+
+    scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+    xgb = XGBClassifier(
+        n_estimators=300, max_depth=4, learning_rate=0.05,
+        scale_pos_weight=scale_pos_weight, eval_metric="aucpr", random_state=10,
+    )
+    xgb_scores = cross_val_score(xgb, X_train, y_train, cv=cv, scoring="average_precision")
+
+    print(f"Logistic Regression PR-AUC: {logreg_scores.mean():.3f} ± {logreg_scores.std():.3f}")
+    print(f"XGBoost PR-AUC:              {xgb_scores.mean():.3f} ± {xgb_scores.std():.3f}")
+
 
 if __name__ == "__main__":
     X_train, X_test, y_train, y_test = load_processed()
 
-    print("Logistic Regression (baseline)")
-    model, scaler = train_baseline(X_train, y_train)
+    print("Cross-validated comparison: ")
+    compare_models(X_train, y_train)
+
+    print("Logistic Regression: ")
+    model, scaler = train_log(X_train, y_train)
     evaluate(model, scaler, X_test, y_test)
 
-    print("\nXGBoost")
+    print("\nXGBoost: ")
     xgb_model = train_xgboost(X_train, y_train)
     evaluate_xgb(xgb_model, X_test, y_test)
