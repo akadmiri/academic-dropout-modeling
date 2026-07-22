@@ -2,7 +2,7 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold, train_test_split
 
 
 def load_data(input_path: str, target_col: str = "Target") -> pd.DataFrame:
@@ -77,6 +77,63 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=to_drop)
 
 
+ONE_HOT_COLUMNS = [
+    "Course",
+    "Application mode",
+    "Marital Status",
+    "Previous qualification",
+]
+TARGET_ENCODE_COLUMNS = [
+    "Father's occupation",
+    "Mother's occupation",
+    "Father's qualification",
+    "Mother's qualification",
+]
+
+
+def target_encode(
+    train_df, test_df, columns, target_col="churn_target", smoothing=10, n_splits=5
+):
+    """Encodes high-cardinality nominal columns as the smoothed target mean, computed
+    out-of-fold on the training set to avoid leakage, and from full-train statistics
+    when encoding the test set."""
+    train_df, test_df = train_df.copy(), test_df.copy()
+    global_mean = train_df[target_col].mean()
+
+    for col in columns:
+        train_df[f"{col}_te"] = np.nan
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=10)
+        for tr_idx, val_idx in kf.split(train_df):
+            stats = (
+                train_df.iloc[tr_idx].groupby(col)[target_col].agg(["mean", "count"])
+            )
+            smoothed = (stats["mean"] * stats["count"] + global_mean * smoothing) / (
+                stats["count"] + smoothing
+            )
+            train_df.iloc[val_idx, train_df.columns.get_loc(f"{col}_te")] = (
+                train_df.iloc[val_idx][col].map(smoothed).fillna(global_mean)
+            )
+
+        full_stats = train_df.groupby(col)[target_col].agg(["mean", "count"])
+        full_smoothed = (
+            full_stats["mean"] * full_stats["count"] + global_mean * smoothing
+        ) / (full_stats["count"] + smoothing)
+        test_df[f"{col}_te"] = test_df[col].map(full_smoothed).fillna(global_mean)
+
+        train_df, test_df = train_df.drop(columns=[col]), test_df.drop(columns=[col])
+
+    return train_df, test_df
+
+
+def one_hot_encode(train_df, test_df, columns):
+    """One-hot encodes moderate-cardinality columns, aligning test columns to train so
+    a category present only in one split doesn't break downstream shapes."""
+    train_enc = pd.get_dummies(train_df, columns=columns)
+    test_enc = pd.get_dummies(test_df, columns=columns)
+    train_enc, test_enc = train_enc.align(test_enc, join="left", axis=1, fill_value=0)
+    return train_enc, test_enc
+
+
 if __name__ == "__main__":
     input_path = "data/raw/dropout.csv"
 
@@ -84,6 +141,8 @@ if __name__ == "__main__":
     delta_df = delta(clean_df)
     selected_df = select_features(delta_df)
     train_data, test_data = split_data(selected_df)
+    train_data, test_data = one_hot_encode(train_data, test_data, ONE_HOT_COLUMNS)
+    train_data, test_data = target_encode(train_data, test_data, TARGET_ENCODE_COLUMNS)
 
     train_data.to_csv("data/processed/train_data.csv", index=False)
     test_data.to_csv("data/processed/test_data.csv", index=False)
@@ -91,3 +150,5 @@ if __name__ == "__main__":
     print(
         f"Processed dataset saved: {train_data.shape[0]} training rows, {test_data.shape[0]} testing rows"
     )
+    print(f"Train shape: {train_data.shape}, Test shape: {test_data.shape}")
+    print(train_data.filter(like="_te").head())
