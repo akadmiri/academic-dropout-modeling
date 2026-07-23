@@ -3,11 +3,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, classification_report
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_score
-from sklearn.metrics import ConfusionMatrixDisplay
 from xgboost import XGBClassifier
-import matplotlib
-matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
+import joblib
+
 
 TARGET_COL = "churn_target"
 
@@ -93,14 +91,7 @@ if __name__ == "__main__":
     xgb_model = train_xgboost(X_train, y_train)
     evaluate_xgb(xgb_model, X_test, y_test)
 
-# Confusion Matrix
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
-    ConfusionMatrixDisplay.from_predictions(y_test, model.predict(scaler.transform(X_test)),
-                                          display_labels=["Graduate", "Dropout"], ax=axes[0])
-    axes[0].set_title("Logistic Regression")
-    ConfusionMatrixDisplay.from_predictions(y_test, xgb_model.predict(X_test),
-                                          display_labels=["Graduate", "Dropout"], ax=axes[1])
-    axes[1].set_title("XGBoost")
-    plt.tight_layout()
-    plt.savefig("output/Confusion_matrix.png")
-    plt.show()
+    joblib.dump(model, "output/model.joblib" )
+    joblib.dump(scaler, "output/scaler.joblib")
+    joblib.dump(xgb_model, "output/xgbmodel.joblib")
+
