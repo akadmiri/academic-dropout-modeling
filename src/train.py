@@ -60,12 +60,10 @@ def evaluate_xgb(model, X_test, y_test):
 
 
 # SVM:
-def train_svm(X_train, y_train):
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
+def train_svm(X_train_scaled, y_train):
     model = SVC(kernel="linear", class_weight="balanced", random_state=10)
     model.fit(X_train_scaled, y_train)
-    return model, scaler
+    return model
 
 def evaluate_svm(model, scaler, X_test, y_test):
     X_test_scaled = scaler.transform(X_test)
@@ -120,8 +118,8 @@ if __name__ == "__main__":
     evaluate_xgb(xgb_model, X_test, y_test)
 
     print("\nSVM: ")
-    svm_model, svm_scaler = train_svm(X_train, y_train)
-    evaluate_svm(svm_model, svm_scaler, X_test, y_test)
+    svm_model = train_svm(scaler.transform(X_train), y_train)
+    evaluate_svm(svm_model, scaler, X_test, y_test)
 
 '''
     joblib.dump(model, "output/model.joblib" )
