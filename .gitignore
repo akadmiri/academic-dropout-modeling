@@ -1,7 +1,7 @@
 # Environments
 yool/
 
-# Datasets and Artifacts
+# Datasets and Models
 data/raw/*.csv
 data/processed/*.csv
 output/
