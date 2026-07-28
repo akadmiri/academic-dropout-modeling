@@ -121,8 +121,8 @@ if __name__ == "__main__":
     svm_model = train_svm(scaler.transform(X_train), y_train)
     evaluate_svm(svm_model, scaler, X_test, y_test)
 
-'''
-    joblib.dump(model, "output/model.joblib" )
+    # Save models
+    joblib.dump(model, "output/logreg.joblib" )
     joblib.dump(scaler, "output/scaler.joblib")
-    joblib.dump(xgb_model, "output/xgbmodel.joblib")
-'''
+    joblib.dump(xgb_model, "output/xgb.joblib")
+    joblib.dump(svm_model, "output/svm.joblib")
