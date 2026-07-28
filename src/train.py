@@ -4,6 +4,7 @@ from sklearn.metrics import average_precision_score, classification_report
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from xgboost import XGBClassifier
+from sklearn.svm import SVC
 import joblib
 
 
@@ -20,13 +21,13 @@ def load_processed(
     return X_train, X_test, y_train, y_test
 
 
+# Logistic Regression:
 def train_log(X_train, y_train):
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     model = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=10)
     model.fit(X_train_scaled, y_train)
     return model, scaler
-
 
 def evaluate(model, scaler, X_test, y_test):
     X_test_scaled = scaler.transform(X_test)
@@ -37,6 +38,7 @@ def evaluate(model, scaler, X_test, y_test):
     print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_proba):.3f}")
 
 
+# XGBoost tree:
 def train_xgboost(X_train, y_train):
     scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
     model = XGBClassifier(
@@ -50,12 +52,29 @@ def train_xgboost(X_train, y_train):
     model.fit(X_train, y_train)
     return model
 
-
 def evaluate_xgb(model, X_test, y_test):
     y_pred = model.predict(X_test)
     y_proba = model.predict_proba(X_test)[:, 1]
     print(classification_report(y_test, y_pred, target_names=["Graduate", "Dropout"]))
     print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_proba):.3f}")
+
+
+# SVM:
+def train_svm(X_train, y_train):
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    model = SVC(kernel="linear", class_weight="balanced", random_state=10)
+    model.fit(X_train, y_train)
+    return model, scaler
+
+def evaluate_svm(model, scaler, X_test, y_test):
+    X_test_scaled = scaler.transform(X_test)
+    y_pred = model.predict(X_test_scaled)
+    y_score = model.decision_function(X_test_scaled)
+
+    print(classification_report(y_test, y_pred, target_names=["Graduate", "Dropout"]))
+    print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_score):.3f}")
+
 
 # Cross Validation: 
 def compare_models(X_train, y_train, n_splits=5):
