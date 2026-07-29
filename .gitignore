@@ -1,5 +1,5 @@
 # Environments
-yool/
+.yool/
 
 # Datasets and Models
 data/raw/*.csv
