@@ -2,26 +2,28 @@ import joblib
 from train import load_processed
 from sklearn.metrics import ConfusionMatrixDisplay
 import matplotlib
-matplotlib.use("TkAgg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 def main():
     X_train, X_test, y_train, y_test = load_processed()
-    model = joblib.load("output/model.joblib")
+    logreg_model = joblib.load("output/logreg.joblib")
     scaler = joblib.load("output/scaler.joblib")
-    xgb_model = joblib.load("output/xgbmodel.joblib")
+    xgb_model = joblib.load("output/xgb.joblib")
+    svm_model = joblib.load("output/svm.joblib")
 
-    # Confusion Matrix
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
-    ConfusionMatrixDisplay.from_predictions(y_test, model.predict(scaler.transform(X_test)),
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    ConfusionMatrixDisplay.from_predictions(y_test, logreg_model.predict(scaler.transform(X_test)),
                                           display_labels=["Graduate", "Dropout"], ax=axes[0])
     axes[0].set_title("Logistic Regression")
     ConfusionMatrixDisplay.from_predictions(y_test, xgb_model.predict(X_test),
                                           display_labels=["Graduate", "Dropout"], ax=axes[1])
     axes[1].set_title("XGBoost")
+    ConfusionMatrixDisplay.from_predictions(y_test, svm_model.predict(scaler.transform(X_test)),
+                                          display_labels=["Graduate", "Dropout"], ax=axes[2])
+    axes[2].set_title("SVM")
     plt.tight_layout()
     plt.savefig("output/Confusion_matrix.png")
-    plt.show()
 
 if __name__ == "__main__":
     main()
