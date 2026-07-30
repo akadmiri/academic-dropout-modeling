@@ -64,6 +64,9 @@ NEGLIGIBLE_SIGNAL_COLUMNS = [
     "International",
     "Educational special needs",
     "Nacionality",
+    "Daytime/evening attendance",
+    "Marital Status",
+    "Displaced",
 ]
 
 
@@ -80,10 +83,10 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
 ONE_HOT_COLUMNS = [
     "Course",
     "Application mode",
-    "Marital Status",
     "Previous qualification",
     "Evaluation status 1st sem",
 ]
+
 TARGET_ENCODE_COLUMNS = [
     "Father's occupation",
     "Mother's occupation",
