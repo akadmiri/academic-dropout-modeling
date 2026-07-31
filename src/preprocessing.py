@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 
 import numpy as np
 import pandas as pd
@@ -69,7 +69,83 @@ NEGLIGIBLE_SIGNAL_COLUMNS = [
     "Displaced",
 ]
 
+# Update the academic qualification for both parents to make it more significant and to get more information
+ACADEMIC_QUALIFICATION = {
+    35: 0, 36: 0,                                                  # 0: no education
+    11: 1, 26: 1, 30: 1, 37: 1, 38: 1, 29: 1,                      # 1: primary education
+    12: 2, 14: 2, 19: 2, 27: 2, 9: 2, 10: 2, 15: 2, 25: 2,         # 2: middle school equiv.
+    1: 3, 13: 3, 18: 3, 20: 3, 22: 3, 31: 3, 33: 3, 6: 3,          # 3: secondary
+    2: 4, 3: 4, 40: 4, 41: 4, 42: 4, 39: 4,                        # 4: bachelor's equiv.
+    4: 5, 43: 5,                                                   # 5: master's
+    5: 6, 44: 6,                                                   # 6: doctorate
+    # 34 (Unknown) treated as missing.
+}
 
+def encode_qualifications(df: pd.DataFrame, columns=("Previous qualification", "Mother's qualification", "Father's qualification")) -> pd.DataFrame:
+    """ Transforms raw Portuguese nominal qualification nomenclature into a 0-6 ordinal scale."""
+    df = df.copy()
+    for col in columns:
+        df[col] = df[col].map(ACADEMIC_QUALIFICATION)
+    return df
+
+#Update occupation for both parents to get more information out of it
+OCCUPATION_MAPPING = {
+    # 0: Student
+    0: 0,
+    
+    # 1: Directors/Executives
+    1: 1, 112: 1, 114: 1,
+    
+    # 2: Specialists / Professionals
+    2: 2, 121: 2, 122: 2, 123: 2, 124: 2, 125: 2,
+    
+    # 3: Technicians / Associate Professionals
+    3: 3, 131: 3, 132: 3, 134: 3, 135: 3,
+    
+    # 4: Administrative / Clerical
+    4: 4, 141: 4, 143: 4, 144: 4,
+    
+    # 5: Services and Sales
+    5: 5, 151: 5, 152: 5, 153: 5, 154: 5,
+    
+    # 6: Agriculture / Fisheries
+    6: 6, 161: 6, 163: 6,
+    
+    # 7: Skilled Trades / Industry
+    7: 7, 171: 7, 172: 7, 173: 7, 174: 7, 175: 7,
+    
+    # 8: Machine Operators / Assembly
+    8: 8, 181: 8, 182: 8, 183: 8,
+    
+    # 9: Unskilled / Elementary Occupations
+    9: 9, 191: 9, 192: 9, 193: 9, 194: 9, 195: 9,
+    
+    # 10: Armed Forces
+    10: 10, 101: 10, 102: 10, 103: 10,
+    
+    # Missing / Other (90, 99) left unmapped to become NaN
+}
+
+def encode_occupations(df: pd.DataFrame, columns=("Mother's occupation", "Father's occupation")) -> pd.DataFrame:
+    """ 
+    Reduces the cardinality of occupational codes to 11 nominal macro-categories. 
+    Unmapped values (90, 99, etc.) are converted to pd.NA.
+    """
+    df = df.copy()
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].map(OCCUPATION_MAPPING).astype('Int64')
+    return df
+
+UPDATED_COLUMNS = [
+    "Previous qualification",
+    "Mother's qualification",
+    "Father's qualification",
+    "Mother's occupation",
+    "Father's occupation",
+]
+
+# Select the features to keep and drop the ones that aren't significant
 def select_features(df: pd.DataFrame) -> pd.DataFrame:
     """Enforces the semester-1-only decision boundary and drops columns with negligible
     target association."""
@@ -83,15 +159,12 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
 ONE_HOT_COLUMNS = [
     "Course",
     "Application mode",
-    "Previous qualification",
     "Evaluation status 1st sem",
 ]
 
 TARGET_ENCODE_COLUMNS = [
     "Father's occupation",
     "Mother's occupation",
-    "Father's qualification",
-    "Mother's qualification",
 ]
 
 
@@ -143,6 +216,8 @@ if __name__ == "__main__":
 
     clean_df = load_data(input_path)
     delta_df = delta(clean_df)
+    delta_df = encode_qualifications(delta_df)
+    delta_df = encode_occupations(delta_df)
     selected_df = select_features(delta_df)
     train_data, test_data = split_data(selected_df)
     train_data, test_data = one_hot_encode(train_data, test_data, ONE_HOT_COLUMNS)
