@@ -82,7 +82,7 @@ ACADEMIC_QUALIFICATION = {
 }
 
 def encode_qualifications(df: pd.DataFrame, columns=("Previous qualification", "Mother's qualification", "Father's qualification")) -> pd.DataFrame:
-    """ Transforms raw Portuguese nominal qualification nomenclature into a 0-6 ordinal scale."""
+    """ Transforms raw Portuguese nominal qualification nomenclature into a 0-4 ordinal scale."""
     df = df.copy()
     for col in columns:
         df[col] = df[col].map(ACADEMIC_QUALIFICATION).astype('Int64')
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     print("\nColumns with missing values in Test:")
     print(test_nulls[test_nulls > 0] if test_nulls.sum() > 0 else "None")
     
-
+    # Save the processed datasets to CSV files
     train_data.to_csv("data/processed/train_data.csv", index=False)
     test_data.to_csv("data/processed/test_data.csv", index=False)
 
