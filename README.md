@@ -73,7 +73,6 @@ interpretability. Not yet implemented.
 **Encoding summary**:
 
 | Columns | Method |
-
 |---|---|
 | `Course`, `Application mode`, `Evaluation status 1st sem` | One-hot (`one_hot_encode`) |
 | `Mother's/Father's occupation` | Target encoding (under review — see above) |
@@ -126,7 +125,6 @@ explicitly rather than collapsed into a single accuracy number.
 ## Current results (real data, 2904 train / 726 test)
 
 | Model | CV PR-AUC | Test PR-AUC |
-
 |---|---|---|
 | Logistic Regression | 0.930 ± 0.010 | 0.927 |
 | XGBoost | 0.929 ± 0.010 | 0.923 |
