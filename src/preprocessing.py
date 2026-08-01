@@ -57,6 +57,19 @@ LEAKAGE_COLUMNS = [
     "Curricular units 2nd sem (grade)",
 ]
 
+REDUNDANT_COLUMNS = [
+    # Structurally embedded in Efficiency 1st sem (= approved / enrolled).
+    # VIF: approved=12.6, efficiency=11.5 when both present — confirmed via
+    # variance_inflation_factor, see exploration notebook.
+    "Curricular units 1st sem (approved)",
+    "Curricular units 1st sem (enrolled)",
+    # Non-significant (Mann-Whitney p_adj > 0.2) and part of the enrolled/
+    # credited/evaluations/without_evaluations near-identity — including them
+    # inflates VIF on approved/efficiency further without adding signal.
+    "Curricular units 1st sem (credited)",
+    "Curricular units 1st sem (evaluations)",
+]
+
 NEGLIGIBLE_SIGNAL_COLUMNS = [
     # Cramér's V / Cohen's d ~0 and not statistically significant in the exploration notebook.
     "Unemployment rate",
@@ -76,7 +89,7 @@ ACADEMIC_QUALIFICATION = {
     11: 1, 26: 1, 30: 1, 37: 1,                                            # 1: primary education
     12: 2, 14: 2, 19: 2, 27: 2, 9: 2, 10: 2, 15: 2, 25: 2, 38: 2, 29:2,    # 2: middle school equiv.
     1: 3, 13: 3, 18: 3, 20: 3, 22: 3, 31: 3, 33: 3, 6: 3,                  # 3: secondary
-    2: 4, 3: 4, 40: 4, 41: 4, 42: 4, 39: 4,                                # 4: Higher education
+    2: 4, 3: 4, 40: 4, 41: 4, 42: 4, 39: 4,                                # 4: Higher education (Bachelor's, Master's, PhD; included here as a single category because of the small number of parents with this level of education)
     4: 4, 43: 4, 5: 4, 44: 4,                                              
     # 34 (Unknown) treated as missing.
 }
@@ -151,7 +164,7 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
     target association."""
 
     to_drop = [
-        c for c in LEAKAGE_COLUMNS + NEGLIGIBLE_SIGNAL_COLUMNS if c in df.columns
+        c for c in LEAKAGE_COLUMNS + NEGLIGIBLE_SIGNAL_COLUMNS + REDUNDANT_COLUMNS if c in df.columns
     ]
     return df.drop(columns=to_drop)
 
