@@ -168,7 +168,19 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
     ]
     return df.drop(columns=to_drop)
 
+
 # Treat missing data:
+ORDINAL_MISSING_COLUMNS = [
+    "Previous qualification",
+    "Mother's qualification",
+    "Father's qualification",
+]
+
+NOMINAL_MISSING_COLUMNS = [
+    "Mother's occupation",
+    "Father's occupation",
+]
+
 def data_filler(train_df: pd.DataFrame, test_df: pd.DataFrame, columns: List[str])-> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Imputes missing values in ordinal columns using the median of the training set.
@@ -186,51 +198,21 @@ def data_filler(train_df: pd.DataFrame, test_df: pd.DataFrame, columns: List[str
 
     return train_df, test_df
 
+def fill_unknown(df: pd.DataFrame, columns, sentinel=-1) -> pd.DataFrame:
+    """Fills missing/unmapped nominal codes with an explicit sentinel category."""
+    df = df.copy()
+    for col in columns:
+        df[col] = df[col].fillna(sentinel)
+    return df
+
+# One hot encoding for categorical variables to separate them into binary columns for each modality.
 ONE_HOT_COLUMNS = [
     "Course",
     "Application mode",
     "Evaluation status 1st sem",
-]
-
-TARGET_ENCODE_COLUMNS = [
     "Father's occupation",
     "Mother's occupation",
 ]
-
-
-def target_encode(
-    train_df, test_df, columns, target_col="churn_target", smoothing=10, n_splits=5
-):
-    """Encodes high-cardinality nominal columns as the smoothed target mean, computed
-    out-of-fold on the training set to avoid leakage, and from full-train statistics
-    when encoding the test set."""
-    train_df, test_df = train_df.copy(), test_df.copy()
-    global_mean = train_df[target_col].mean()
-
-    for col in columns:
-        train_df[f"{col}_te"] = np.nan
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=10)
-        for tr_idx, val_idx in kf.split(train_df):
-            stats = (
-                train_df.iloc[tr_idx].groupby(col)[target_col].agg(["mean", "count"])
-            )
-            smoothed = (stats["mean"] * stats["count"] + global_mean * smoothing) / (
-                stats["count"] + smoothing
-            )
-            train_df.iloc[val_idx, train_df.columns.get_loc(f"{col}_te")] = (
-                train_df.iloc[val_idx][col].map(smoothed).fillna(global_mean)
-            )
-
-        full_stats = train_df.groupby(col)[target_col].agg(["mean", "count"])
-        full_smoothed = (
-            full_stats["mean"] * full_stats["count"] + global_mean * smoothing
-        ) / (full_stats["count"] + smoothing)
-        test_df[f"{col}_te"] = test_df[col].map(full_smoothed).fillna(global_mean)
-
-        train_df, test_df = train_df.drop(columns=[col]), test_df.drop(columns=[col])
-
-    return train_df, test_df
-
 
 def one_hot_encode(train_df, test_df, columns):
     """One-hot encodes moderate-cardinality columns, aligning test columns to train so
@@ -245,22 +227,19 @@ if __name__ == "__main__":
     input_path = "data/raw/dropout.csv"
 
     clean_df = load_data(input_path)
+
     delta_df = delta(clean_df)
     delta_df = encode_qualifications(delta_df)
     delta_df = encode_occupations(delta_df)
+
     selected_df = select_features(delta_df)
+
     train_data, test_data = split_data(selected_df)
 
-    qualifications = [
-        "Previous qualification", 
-        "Mother's qualification", 
-        "Father's qualification"
-    ]
-    train_data, test_data = data_filler(train_data, test_data, qualifications)
-
+    train_data, test_data = data_filler(train_data, test_data, ORDINAL_MISSING_COLUMNS)
+    train_data = fill_unknown(train_data, NOMINAL_MISSING_COLUMNS)
+    test_data = fill_unknown(test_data, NOMINAL_MISSING_COLUMNS) 
     train_data, test_data = one_hot_encode(train_data, test_data, ONE_HOT_COLUMNS)
-    train_data, test_data = target_encode(train_data, test_data, TARGET_ENCODE_COLUMNS)
-
 
     #Missing Values check
     train_nulls = train_data.isna().sum()
@@ -280,3 +259,4 @@ if __name__ == "__main__":
         f"Processed dataset saved: {train_data.shape[0]} training rows, {test_data.shape[0]} testing rows"
     )
     print(f"Train shape: {train_data.shape}, Test shape: {test_data.shape}")
+    
