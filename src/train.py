@@ -112,6 +112,8 @@ if __name__ == "__main__":
     print("Logistic Regression: ")
     model, scaler = train_log(X_train, y_train)
     evaluate(model, scaler, X_test, y_test)
+    coefs = pd.Series(model.coef_[0], index=X_train.columns).sort_values(key=abs, ascending=False)
+    print(coefs)
 
     print("\nXGBoost: ")
     xgb_model = train_xgboost(X_train, y_train)
