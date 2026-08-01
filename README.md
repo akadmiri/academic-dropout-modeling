@@ -62,21 +62,8 @@ tiers. Unknown/blank codes route to missing, median-imputed on the training set 
 
 **Occupation regrouping** (`encode_occupations` / `OCCUPATION_MAPPING`): `Mother's occupation`,
 `Father's occupation` are collapsed from granular job-title codes into 11 broad occupational
-macro-groups. This is explicitly a **nominal** regrouping, not ordinal — no consistent
-income/skill/education ranking held across both parents' occupation distributions, so no
-ordinal scale was imposed. Currently encoded via smoothed, 5-fold out-of-fold target encoding
-(`target_encode`, leakage-safe: encoding stats fit on training folds only, full-train stats
-used for the test set). **Open question:** switch to one-hot, consistent with how `Course` and
-`Application mode` — both higher cardinality — are already handled, for direct per-group
-interpretability. Not yet implemented.
+macro-groups.
 
-**Encoding summary**:
-
-| Columns | Method |
-|---|---|
-| `Course`, `Application mode`, `Evaluation status 1st sem` | One-hot (`one_hot_encode`) |
-| `Mother's/Father's occupation` | Target encoding (under review — see above) |
-| Qualification columns | Ordinal (0–4), median-imputed |
 
 **Split** (`split_data`): stratified 80/20, `random_state=10`, preserving the exact class base
 rate in both splits.
@@ -141,14 +128,10 @@ predictors: `Efficiency 1st sem`, 1st-semester grade, then financial-pressure in
 - **Precision/recall operating point**: current model sits at 0.86 precision / 0.82 recall on
   Dropout. This is a business decision (cost of a missed at-risk student vs. cost of an
   unnecessary intervention) requiring supervisor input, not something to resolve unilaterally.
-- **Data simulation**: expanding to 20,000–30,000 rows via simulation, per supervisor request.
+- **Data simulation**: expanding to 20,000 rows via simulation, per supervisor request.
   Method under active discussion.
 
 ## Next steps
 
-1. Resolve occupation encoding.
-2. Re-run significance testing on the finalized ordinal/nominal features and on
-   `Application order`.
-3. Build the simulation module and re-validate model performance on the expanded dataset,
-   real-only test set.
-4. Port the pipeline to YOOL's private student data once available.
+
+1. Build the simulation module and re-validate model performance on the expanded dataset, real-only test set.
