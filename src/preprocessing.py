@@ -2,6 +2,7 @@ from typing import Tuple, List
 
 import numpy as np
 import pandas as pd
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold, train_test_split
 
 
@@ -71,13 +72,12 @@ NEGLIGIBLE_SIGNAL_COLUMNS = [
 
 # Update the academic qualification for both parents to make it more significant and to get more information
 ACADEMIC_QUALIFICATION = {
-    35: 0, 36: 0,                                                  # 0: no education
-    11: 1, 26: 1, 30: 1, 37: 1, 38: 1, 29: 1,                      # 1: primary education
-    12: 2, 14: 2, 19: 2, 27: 2, 9: 2, 10: 2, 15: 2, 25: 2,         # 2: middle school equiv.
-    1: 3, 13: 3, 18: 3, 20: 3, 22: 3, 31: 3, 33: 3, 6: 3,          # 3: secondary
-    2: 4, 3: 4, 40: 4, 41: 4, 42: 4, 39: 4,                        # 4: bachelor's equiv.
-    4: 5, 43: 5,                                                   # 5: master's
-    5: 6, 44: 6,                                                   # 6: doctorate
+    35: 0, 36: 0,                                                          # 0: no education
+    11: 1, 26: 1, 30: 1, 37: 1,                                            # 1: primary education
+    12: 2, 14: 2, 19: 2, 27: 2, 9: 2, 10: 2, 15: 2, 25: 2, 38: 2, 29:2,    # 2: middle school equiv.
+    1: 3, 13: 3, 18: 3, 20: 3, 22: 3, 31: 3, 33: 3, 6: 3,                  # 3: secondary
+    2: 4, 3: 4, 40: 4, 41: 4, 42: 4, 39: 4,                                # 4: Higher education
+    4: 4, 43: 4, 5: 4, 44: 4,                                              
     # 34 (Unknown) treated as missing.
 }
 
@@ -85,7 +85,7 @@ def encode_qualifications(df: pd.DataFrame, columns=("Previous qualification", "
     """ Transforms raw Portuguese nominal qualification nomenclature into a 0-6 ordinal scale."""
     df = df.copy()
     for col in columns:
-        df[col] = df[col].map(ACADEMIC_QUALIFICATION)
+        df[col] = df[col].map(ACADEMIC_QUALIFICATION).astype('Int64')
     return df
 
 #Update occupation for both parents to get more information out of it
@@ -155,6 +155,23 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
     ]
     return df.drop(columns=to_drop)
 
+# Treat missing data:
+def data_filler(train_df: pd.DataFrame, test_df: pd.DataFrame, columns: List[str])-> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Imputes missing values in ordinal columns using the median of the training set.
+    Prevents data leakage by fitting strictly on out-of-fold data.
+    """
+    train_df, test_df = train_df.copy(), test_df.copy()
+    cols_to_fill = [c for c in columns if c in train_df.columns]
+    if not cols_to_fill:
+        return train_df, test_df
+    imputer = SimpleImputer(strategy='median')
+
+    #fit strictly on the training set to not leak any data to the models
+    train_df[cols_to_fill] = imputer.fit_transform(train_df[cols_to_fill])
+    test_df[cols_to_fill] = imputer.transform(test_df[cols_to_fill])
+
+    return train_df, test_df
 
 ONE_HOT_COLUMNS = [
     "Course",
@@ -220,8 +237,28 @@ if __name__ == "__main__":
     delta_df = encode_occupations(delta_df)
     selected_df = select_features(delta_df)
     train_data, test_data = split_data(selected_df)
+
+    qualifications = [
+        "Previous qualification", 
+        "Mother's qualification", 
+        "Father's qualification"
+    ]
+    train_data, test_data = data_filler(train_data, test_data, qualifications)
+
     train_data, test_data = one_hot_encode(train_data, test_data, ONE_HOT_COLUMNS)
     train_data, test_data = target_encode(train_data, test_data, TARGET_ENCODE_COLUMNS)
+
+
+    #Missing Values check
+    train_nulls = train_data.isna().sum()
+    test_nulls = test_data.isna().sum()
+    
+    print("Columns with missing values in Train:")
+    print(train_nulls[train_nulls > 0] if train_nulls.sum() > 0 else "None")
+    
+    print("\nColumns with missing values in Test:")
+    print(test_nulls[test_nulls > 0] if test_nulls.sum() > 0 else "None")
+    
 
     train_data.to_csv("data/processed/train_data.csv", index=False)
     test_data.to_csv("data/processed/test_data.csv", index=False)
@@ -230,4 +267,3 @@ if __name__ == "__main__":
         f"Processed dataset saved: {train_data.shape[0]} training rows, {test_data.shape[0]} testing rows"
     )
     print(f"Train shape: {train_data.shape}, Test shape: {test_data.shape}")
-    print(train_data.filter(like="_te").head())
