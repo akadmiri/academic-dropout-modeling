@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 def main():
-    X_train, X_test, y_train, y_test = load_processed()
+    X_train, X_test, y_train, y_test, sim_mask = load_processed()
     logreg_model = joblib.load("output/logreg.joblib")
     scaler = joblib.load("output/scaler.joblib")
     xgb_model = joblib.load("output/xgb.joblib")
