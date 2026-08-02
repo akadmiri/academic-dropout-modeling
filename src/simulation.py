@@ -1,114 +1,183 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pymc as pm
 from scipy.stats import norm
 
-class Simulation:
-    """
-    Simulates tabular data using a Gaussian Copula generative process via PyMC.
-    """
+from preprocessing import (
+    load_data, delta, encode_qualifications, encode_occupations,
+    select_features, split_data, data_filler, fill_unknown, one_hot_encode,
+    ORDINAL_MISSING_COLUMNS, NOMINAL_MISSING_COLUMNS, ONE_HOT_COLUMNS,
+)
+from train import TARGET_COL
 
-    def __init__(self, epsilon: float = 1e-6) -> None:
+RANDOM_SEED = 10
+N_SYNTHETIC_ROWS = 22000  # real (2904) + synthetic ≈ 25k
+
+CONTINUOUS_COLUMNS = [
+    "Efficiency 1st sem",
+    "Admission grade",
+    "Previous qualification (grade)",
+    "Age at enrollment",
+    "Curricular units 1st sem (without evaluations)",
+    "Application order",
+]
+COUNT_COLUMNS = {"Age at enrollment", "Curricular units 1st sem (without evaluations)", "Application order"}
+
+GRADE_COLUMN = "Curricular units 1st sem (grade)"
+EVAL_STATUS_COLUMN = "Evaluation status 1st sem"
+
+DISCRETE_COLUMNS = [
+    "Course", "Application mode",
+    "Mother's occupation", "Father's occupation",
+    "Mother's qualification", "Father's qualification", "Previous qualification",
+    EVAL_STATUS_COLUMN, "Gender", "Debtor", "Scholarship holder", "Tuition fees up to date",
+]
+
+
+def build_preprocessed_pre_onehot(input_path="data/raw/dropout.csv"):
+    """Runs the real preprocessing pipeline up to (not including) one-hot
+    encoding, so train/test carry literal category labels."""
+    clean_df = load_data(input_path)
+    delta_df = delta(clean_df)
+    delta_df = encode_qualifications(delta_df)
+    delta_df = encode_occupations(delta_df)
+    selected_df = select_features(delta_df)
+
+    train_df, test_df = split_data(selected_df)
+    train_df, test_df = data_filler(train_df, test_df, ORDINAL_MISSING_COLUMNS)
+    train_df = fill_unknown(train_df, NOMINAL_MISSING_COLUMNS)
+    test_df = fill_unknown(test_df, NOMINAL_MISSING_COLUMNS)
+    return train_df, test_df
+
+
+class ContinuousBlockModel:
+    """Class-conditional Gaussian copula for the continuous block, fit via
+    MCMC with an LKJ prior on the correlation matrix."""
+
+    def __init__(self, epsilon: float = 1e-6):
         self.epsilon = epsilon
-        self.ecdfs: dict[str, np.ndarray] = {}
-        self.columns: list[str] = []
-        self.covariance_matrix: np.ndarray | None = None
+        self.ecdfs = {}
+        self.trace = None
+        self.columns = []
 
-    def _transform(self, series: pd.Series, col_name: str) -> np.ndarray:
-        """
-        Applies Probability Integral Transform to map data to a latent normal space.
-        """
-        sorted_vals = np.sort(series.dropna().values)
-        self.ecdfs[col_name] = sorted_vals
-
-        # Calculate empirical CDF (ranks) and scale to [epsilon, 1-epsilon] to avoid inf
-        ranks = series.rank(method='average').values
-        u = ranks / (len(series) + 1)
+    def _to_latent(self, series: pd.Series, col: str) -> np.ndarray:
+        self.ecdfs[col] = np.sort(series.values)
+        u = series.rank(method="average").values / (len(series) + 1)
         u = np.clip(u, self.epsilon, 1 - self.epsilon)
-        
         return norm.ppf(u)
 
-    def _inverse_transform(self, latent_array: np.ndarray, col_name: str) -> np.ndarray:
-        """
-        Inverts latent normal data back to the original mixed-type feature space.
-        """
-        u = norm.cdf(latent_array)
-        sorted_vals = self.ecdfs[col_name]
+    def _from_latent(self, latent: np.ndarray, col: str) -> np.ndarray:
+        u = norm.cdf(latent)
+        return np.quantile(self.ecdfs[col], u, method="inverted_cdf")
 
-        return np.quantile(sorted_vals, u, method='inverted_cdf')
-
-    def fit(self, df: pd.DataFrame, jitter: float = 1e-5) -> None:
-        """
-        Fits the Gaussian Copula model and enforces positive definiteness.
-        """
-        self.columns = df.columns.tolist()
-        latent_data = np.column_stack([self._transform(df[col], col) for col in self.columns])
-
-        # Compute the 82x82 covariance matrix
-        cov_matrix = np.cov(latent_data, rowvar=False)
-        
-        # Apply Tikhonov regularization (jitter) to the diagonal to ensure Positive Definiteness
-        self.covariance_matrix = cov_matrix + np.eye(len(self.columns)) * jitter
-
-    def simulate(self, n_samples: int) -> pd.DataFrame:
-        """
-        Executes PyMC forward simulation and reconstructs the original feature space.
-        """
-        if self.covariance_matrix is None:
-            raise ValueError("Model must be fitted before simulation.")
-
+    def fit(self, class_df: pd.DataFrame, columns, seed: int):
+        self.columns = columns
+        latent = np.column_stack([self._to_latent(class_df[c], c) for c in columns])
+        n_dims = len(columns)
         with pm.Model():
-            # Define a single 82-dimensional multivariate normal
-            latent_space = pm.MvNormal(
-                'latent_space',
-                mu=np.zeros(len(self.columns)),
-                cov=self.covariance_matrix
-            )
-            
-        # Let pm.draw handle the N-sample batch generation.
-        # This rigorously guarantees an output shape of (n_samples, 82).
-        simulated_latent = pm.draw(latent_space, draws=n_samples)
+            sd_dist = pm.Exponential.dist(1.0, shape=n_dims)
+            chol, _, _ = pm.LKJCholeskyCov("packed", n=n_dims, eta=2.0, sd_dist=sd_dist, compute_corr=True)
+            chol = pm.Deterministic("chol", chol)  # store the full matrix, not just the packed draw
+            mu = pm.Normal("mu", 0.0, 1.0, shape=n_dims)
+            pm.MvNormal("obs", mu=mu, chol=chol, observed=latent)
+            self.trace = pm.sample(1000, tune=1000, chains=4, cores=4, random_seed=seed, progressbar=False)
 
-        simulated_data = {
-            col: self._inverse_transform(simulated_latent[:, i], col)
-            for i, col in enumerate(self.columns)
-        }
-        
-        return pd.DataFrame(simulated_data)
+    def sample(self, n_samples: int, rng: np.random.Generator) -> pd.DataFrame:
+        post = self.trace.posterior
+        n_draws = post.sizes["chain"] * post.sizes["draw"]
+        mu_samples = post["mu"].values.reshape(n_draws, -1)
+        chol_samples = post["chol"].values.reshape(n_draws, len(self.columns), len(self.columns))
+
+        draw_idx = rng.integers(0, n_draws, size=n_samples)
+        latent = np.empty((n_samples, len(self.columns)))
+        for i, d in enumerate(draw_idx):
+            z = rng.standard_normal(len(self.columns))
+            latent[i] = mu_samples[d] + chol_samples[d] @ z
+
+        out = {c: self._from_latent(latent[:, i], c) for i, c in enumerate(self.columns)}
+        df = pd.DataFrame(out)
+        for c in COUNT_COLUMNS:
+            df[c] = df[c].round().astype(int)
+        return df
+
+
+def sample_discrete_block(class_df: pd.DataFrame, n_samples: int, rng: np.random.Generator) -> pd.DataFrame:
+    """Joint resampling from the real class-conditional data — every synthetic
+    row's discrete profile is copied whole from one real student, so every
+    real pairwise association in this block is preserved exactly."""
+    idx = rng.integers(0, len(class_df), size=n_samples)
+    return class_df[DISCRETE_COLUMNS].iloc[idx].reset_index(drop=True)
+
+
+def sample_grade(eval_status: pd.Series, class_df: pd.DataFrame, rng: np.random.Generator,
+                  jitter_frac: float = 0.05) -> np.ndarray:
+    """0 wherever Evaluation status forces it (mirrors delta()'s own logic);
+    resampled from real positive grades in this class otherwise, with light
+    jitter so it isn't a literal copy."""
+    positive_real = class_df.loc[class_df[EVAL_STATUS_COLUMN] == "positive_grade", GRADE_COLUMN].values
+    grade = np.zeros(len(eval_status))
+    mask = (eval_status == "positive_grade").values
+    n_pos = int(mask.sum())
+    if n_pos > 0:
+        base = rng.choice(positive_real, size=n_pos, replace=True)
+        jitter = rng.normal(0, positive_real.std() * jitter_frac, size=n_pos)
+        grade[mask] = np.clip(base + jitter, 0.01, 20.0)
+    return grade
+
+
+def generate_class(class_df: pd.DataFrame, n_samples: int, seed: int, rng: np.random.Generator) -> pd.DataFrame:
+    discrete = sample_discrete_block(class_df, n_samples, rng)
+
+    continuous_model = ContinuousBlockModel()
+    continuous_model.fit(class_df, CONTINUOUS_COLUMNS, seed=seed)
+    continuous = continuous_model.sample(n_samples, rng)
+    for c in CONTINUOUS_COLUMNS:  # keep values inside the real observed range
+        continuous[c] = continuous[c].clip(class_df[c].min(), class_df[c].max())
+
+    grade = sample_grade(discrete[EVAL_STATUS_COLUMN], class_df, rng)
+
+    synthetic = pd.concat([discrete.reset_index(drop=True), continuous.reset_index(drop=True)], axis=1)
+    synthetic[GRADE_COLUMN] = grade
+    return synthetic
+
+
+def main():
+    train_df, test_df = build_preprocessed_pre_onehot()
+    rng = np.random.default_rng(RANDOM_SEED)
+
+    base_rate = train_df[TARGET_COL].mean()
+    n_dropout = int(round(N_SYNTHETIC_ROWS * base_rate))
+    n_graduate = N_SYNTHETIC_ROWS - n_dropout
+
+    synthetic_parts = []
+    for cls, n_cls, seed in [(1, n_dropout, RANDOM_SEED), (0, n_graduate, RANDOM_SEED + 1)]:
+        class_df = train_df[train_df[TARGET_COL] == cls]
+        part = generate_class(class_df, n_cls, seed, rng)
+        part[TARGET_COL] = cls
+        synthetic_parts.append(part)
+    synthetic_df = pd.concat(synthetic_parts, ignore_index=True)
+
+    train_tagged = train_df.copy()
+    train_tagged["Simulated"] = 0
+    synthetic_df["Simulated"] = 1
+    augmented_train = pd.concat([train_tagged, synthetic_df], ignore_index=True)
+
+    simulated_mask = augmented_train["Simulated"]
+    augmented_train = augmented_train.drop(columns=["Simulated"])
+
+    # real category labels in, so this just works — no post-hoc constraint patching
+    augmented_train_enc, test_enc = one_hot_encode(augmented_train, test_df, ONE_HOT_COLUMNS)
+
+    Path("data/processed").mkdir(parents=True, exist_ok=True)
+    augmented_train_enc.to_csv("data/processed/train_data.csv", index=False)
+    test_enc.to_csv("data/processed/test_data.csv", index=False)
+    simulated_mask.to_csv("data/processed/train_simulated_mask.csv", index=False)
+
+    print(f"Real training rows: {len(train_df)}, synthetic rows: {len(synthetic_df)}")
+    print(f"Augmented train shape: {augmented_train_enc.shape}, test shape: {test_enc.shape}")
+
 
 if __name__ == "__main__":
-    from train import load_processed
-    
-    X_train, X_test, y_train, y_test = load_processed()
-    
-    df_train = X_train.copy()
-    target_col_name = getattr(y_train, 'name', 'target_dropout')
-    df_train[target_col_name] = y_train
-
-    # Fit generative model purely on training distribution
-    simulator = Simulation()
-    simulator.fit(df_train)
-    
-    # Generate synthetic data
-    simulated_full_data = simulator.simulate(n_samples=30000)
-    
-    # 1. Apply tracking flags
-    df_train['Simulated'] = 0
-    simulated_full_data['Simulated'] = 1
-    
-    # 2. Append synthetic data to real training data
-    augmented_train = pd.concat([df_train, simulated_full_data], axis=0, ignore_index=True)
-    
-    # 3. Separate features, targets, and metadata
-    y_train_augmented = augmented_train[target_col_name]
-    is_simulated_mask = augmented_train['Simulated']
-    
-    # 4. Drop metadata and targets from the feature matrix
-    X_train_augmented = augmented_train.drop(columns=[target_col_name, 'Simulated'])
-    
-    print(f"Original Training Shape: {X_train.shape}")
-    print(f"Augmented Training Shape: {X_train_augmented.shape}")
-
-    X_train_augmented.to_csv('data/processed/X_synthetic.csv', index=False)
-    y_train_augmented.to_csv('data/processed/y_synthetic.csv', index=False)
-    is_simulated_mask.to_csv('data/processed/simulated_mask.csv', index=False)
+    main()
