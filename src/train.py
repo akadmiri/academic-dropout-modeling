@@ -105,7 +105,7 @@ def compare_models(X_train, y_train, n_splits=5):
 
 if __name__ == "__main__":
     X_train, X_test, y_train, y_test = load_processed()
-
+    
     print("Cross-validated comparison: ")
     compare_models(X_train, y_train)
 
