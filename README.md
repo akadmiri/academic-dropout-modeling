@@ -32,7 +32,8 @@ Fetches dataset 697, saves the raw CSV to `data/raw/dropout.csv`.
 **Feature engineering** (`delta`):
 
 - `Efficiency 1st sem` = approved / enrolled (0 when enrolled = 0). Captures how much of a
-  student's course load actually converted to passed units — the strongest single predictor.
+  student's course load actually converted to passed units — the strongest single predictor
+  on real data.
 - `Evaluation status 1st sem`: a 3-state categorical (`no_evaluation` / `evaluated_zero` /
   `positive_grade`) resolving the fact that a raw grade of 0 conflates two very different
   situations — never sitting an evaluation, vs. sitting one and failing it.
@@ -42,12 +43,9 @@ Fetches dataset 697, saves the raw CSV to `data/raw/dropout.csv`.
 at the semester-1 decision point for a currently-enrolled student.
 
 **Multicollinearity** (`REDUNDANT_COLUMNS`): 1st-semester `approved` and `enrolled` are dropped
-as structurally embedded in `Efficiency 1st sem` (VIF: approved = 21, efficiency = 16 when
-both present). `credited` and `evaluations` are dropped alongside them — non-significant
-individually (Mann-Whitney p_adj > 0.2) and part of the same near-identity block, so keeping
-them only inflates VIF further without adding signal. Removing all four confirmed no PR-AUC
-loss (~0.930 before and after), which is the actual evidence that they carried no independent
-information beyond what `Efficiency 1st sem` and `grade` already capture.
+as structurally embedded in `Efficiency 1st sem`, along with `credited` and `evaluations`
+(non-significant individually and part of the same near-identity block). VIF was confirmed via
+`variance_inflation_factor` in `notebooks/exploration.ipynb`.
 
 **Negligible signal** (`NEGLIGIBLE_SIGNAL_COLUMNS`): dropped on effect size, not p-value alone —
 `Unemployment rate`, `GDP`, `Inflation rate`, `International`, `Educational special needs`,
@@ -62,13 +60,41 @@ tiers. Unknown/blank codes route to missing, median-imputed on the training set 
 
 **Occupation regrouping** (`encode_occupations` / `OCCUPATION_MAPPING`): `Mother's occupation`,
 `Father's occupation` are collapsed from granular job-title codes into 11 broad occupational
-macro-groups.
-
+macro-groups (student, executives, professionals, ..., armed forces). Unmapped codes become
+missing, filled with an explicit sentinel category (`fill_unknown`) rather than imputed, since
+there's no meaningful "median occupation."
 
 **Split** (`split_data`): stratified 80/20, `random_state=10`, preserving the exact class base
 rate in both splits.
 
-### 3. Training — `src/train.py`
+### 3. Simulation — `src/simulation.py`
+
+Augments the real training set with class-conditional synthetic rows, targeting ~25k total rows
+as requested by the supervisor:
+
+- **Continuous block** (`Efficiency 1st sem`, `Admission grade`, `Previous qualification
+  (grade)`, `Age at enrollment`, `Curricular units 1st sem (without evaluations)`, `Application
+  order`): modeled jointly per class with a Gaussian copula — each variable's empirical CDF is
+  transformed to a latent normal, and an LKJ-prior correlation matrix over the latent space is
+  fit via PyMC's NUTS sampler — so the real pairwise correlations within this block are
+  preserved in the synthetic draws.
+- **Discrete block**: joint class-conditional bootstrap — each synthetic row's whole discrete
+  profile (course, application mode, occupation/qualification tiers, financial-pressure flags,
+  evaluation status, gender) is copied from one real student, so every real pairwise association
+  among discrete features is preserved exactly.
+- **`Curricular units 1st sem (grade)`**: currently sampled separately from the continuous
+  copula — zero wherever `Evaluation status` forces it, otherwise resampled from real positive
+  grades in the same class with light jitter. This means grade is **not** constrained to
+  correlate with `Efficiency 1st sem` or the rest of the continuous block in synthetic rows,
+  unlike in real data. This is an open item — see below.
+- **Realism check**: a logistic-regression discriminator trained to separate real from synthetic
+  rows scores ≈0.53 AUC (near chance), which is good marginal-distribution evidence. A linear
+  discriminator can't detect the kind of broken pairwise correlation described above, so this
+  doesn't yet validate the joint structure of the continuous block.
+- Synthetic rows are tagged (`data/processed/train_simulated_mask.csv`); the held-out test set
+  is always 100% real and untouched by the generation process.
+
+### 4. Training — `src/train.py`
 
 Three models share the same final feature set deliberately, to keep the pipeline simple rather
 than maintaining per-model feature sets:
@@ -77,28 +103,37 @@ than maintaining per-model feature sets:
   once on the training set.
 - **XGBoost** — `scale_pos_weight` for imbalance, unscaled inputs (tree-based, doesn't need it).
 - **SVM** (linear kernel) — `class_weight="balanced"`, reuses the *same fitted scaler* from
-  logistic regression rather than refitting one, so both linear models see identically scaled
-  inputs and no scaler is fit twice on the same data.
+  logistic regression rather than refitting one. SVM's score in evaluation is `decision_function`
+  (an unbounded margin, not a calibrated probability) — fine for PR-AUC ranking, not a substitute
+  for `predict_proba` if a calibrated risk score is ever needed from this model specifically.
 
-5-fold stratified cross-validation on PR-AUC precedes the final single fit, for a variance
-estimate alongside the point estimate.
+`compare_models_real_cv` cross-validates strictly on real-data folds (synthetic rows, when
+present, are added to each fold's training portion but never appear in a validation fold), giving
+a variance estimate that isn't contaminated by scoring the model on synthetic data. Note: the
+synthetic set itself is generated once from the *full* real training set before any CV split
+happens, so each fold's added synthetic data is informed in part by that fold's own held-out
+rows — a mild optimistic bias in the CV estimate that does not affect the final test-set numbers
+below, since the test set was never involved in synthetic generation.
 
-### 4. Validation — `src/validate.py`
+### 5. Validation — `src/validate.py`
 
-Confusion matrices for all three models against the held-out real test set.
+Classification reports and confusion matrices for all three models against the held-out real
+test set, plus a bootstrap (2,000 resamples) 95% confidence interval on PR-AUC per model.
 
-### 5. Exploration — `notebooks/exploration.ipynb`
+### 6. Exploration — `notebooks/exploration.ipynb`
 
-EDA notebook (French). Variable typing and univariate stats, distribution plots, bivariate
+EDA notebook. Variable typing and univariate stats, distribution plots, bivariate
 analysis restricted to semester-1/admission-time features (boxplots, Cohen's d, Mann-Whitney U
 with Benjamini-Hochberg correction), categorical association (Cramér's V), correlation matrix
 and VIF on the curricular-units block.
 
-Statistical findings worth flagging: `Efficiency 1st sem` has by far the largest effect
-(d ≈ −1.85, p < 1e-300). Parental qualification is asymmetric — `Mother's qualification` is
-significant after correction (p_adj = 0.003), `Father's qualification` is not (p_adj = 0.55) —
-documented rather than treated as symmetric. `Application order` has not yet been run through
-significance testing.
+Statistical findings worth flagging: `Efficiency 1st sem` has by far the largest effect on real
+data (d ≈ −1.85, p < 1e-300). Parental qualification is asymmetric — `Mother's qualification` is
+significant after correction (p_adj = 0.003), `Father's qualification` is not (p_adj = 0.55).
+**Open**: `Application order` has never been run through significance testing despite being used
+as a model feature, and the post-recoding occupation macro-groups (`encode_occupations` output)
+haven't been re-tested — the notebook's categorical association section still runs on the raw,
+high-cardinality occupation codes.
 
 ## Class imbalance & evaluation choice
 
@@ -106,32 +141,4 @@ significance testing.
 (`class_weight="balanced"` / `scale_pos_weight`), not oversampling. **PR-AUC (average
 precision)** on the Dropout class is the primary metric, over ROC-AUC, given the imbalance and
 because in an intervention context, missing an at-risk student (false negative) is generally
-costlier than an unnecessary outreach (false positive) — precision/recall is tracked
-explicitly rather than collapsed into a single accuracy number.
-
-## Current results (real data, 2904 train / 726 test)
-
-| Model | CV PR-AUC | Test PR-AUC |
-|---|---|---|
-| Logistic Regression | 0.930 ± 0.010 | 0.927 |
-| XGBoost | 0.929 ± 0.010 | 0.923 |
-| SVM | 0.931 ± 0.011 | 0.926 |
-
-Logistic regression coefficients are the primary interpretability artifact (trustworthy since
-the VIF cleanup — see multicollinearity above). Full report in `results.md`. Strongest
-predictors: `Efficiency 1st sem`, 1st-semester grade, then financial-pressure indicators
-(`Tuition fees up to date`, `Debtor`, `Scholarship holder`).
-
-## Known open decisions
-
-- **Occupation encoding**: target encoding vs. one-hot — see above, not yet resolved.
-- **Precision/recall operating point**: current model sits at 0.86 precision / 0.82 recall on
-  Dropout. This is a business decision (cost of a missed at-risk student vs. cost of an
-  unnecessary intervention) requiring supervisor input, not something to resolve unilaterally.
-- **Data simulation**: expanding to 20,000 rows via simulation, per supervisor request.
-  Method under active discussion.
-
-## Next steps
-
-
-1. Build the simulation module and re-validate model performance on the expanded dataset, real-only test set.
+costlier than an unnecessary outreach (false positive).
