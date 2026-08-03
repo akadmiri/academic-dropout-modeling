@@ -4,7 +4,10 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 from scipy.stats import norm
-
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from preprocessing import (
     load_data, delta, encode_qualifications, encode_occupations,
     select_features, split_data, data_filler, fill_unknown, one_hot_encode,
@@ -142,6 +145,24 @@ def generate_class(class_df: pd.DataFrame, n_samples: int, seed: int, rng: np.ra
     synthetic[GRADE_COLUMN] = grade
     return synthetic
 
+# Check the simulated data
+def discriminator_check(real_pre_onehot: pd.DataFrame, synthetic_pre_onehot: pd.DataFrame,
+                         discrete_columns, continuous_columns, seed: int = 10) -> float:
+    """AUC of a classifier trained to tell real rows from synthetic ones.
+    Near 0.5 = statistically convincing. Near 1.0 = something's off."""
+    real = real_pre_onehot.copy()
+    real["is_synthetic"] = 0
+    synth = synthetic_pre_onehot.copy()
+    synth["is_synthetic"] = 1
+    combined = pd.concat([real, synth], ignore_index=True)
+
+    X = pd.get_dummies(combined[discrete_columns + continuous_columns], columns=discrete_columns)
+    y = combined["is_synthetic"]
+
+    clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000, class_weight="balanced", random_state=seed))
+    scores = cross_val_score(clf, X, y, cv=StratifiedKFold(5, shuffle=True, random_state=seed), scoring="roc_auc")
+    return scores.mean()
+
 
 def main():
     train_df, test_df = build_preprocessed_pre_onehot()
@@ -159,6 +180,10 @@ def main():
         synthetic_parts.append(part)
     synthetic_df = pd.concat(synthetic_parts, ignore_index=True)
 
+    # Check the synthetic data's realism with a discriminator
+    auc = discriminator_check(train_df, synthetic_df, DISCRETE_COLUMNS, CONTINUOUS_COLUMNS + [GRADE_COLUMN], seed=RANDOM_SEED)
+    print(f"Discriminator AUC (real vs synthetic): {auc:.3f}")
+
     train_tagged = train_df.copy()
     train_tagged["Simulated"] = 0
     synthetic_df["Simulated"] = 1
@@ -167,7 +192,7 @@ def main():
     simulated_mask = augmented_train["Simulated"]
     augmented_train = augmented_train.drop(columns=["Simulated"])
 
-    # real category labels in, so this just works — no post-hoc constraint patching
+    # real category labels in
     augmented_train_enc, test_enc = one_hot_encode(augmented_train, test_df, ONE_HOT_COLUMNS)
 
     Path("data/processed").mkdir(parents=True, exist_ok=True)
