@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, classification_report
+from sklearn.metrics import average_precision_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
@@ -42,13 +42,6 @@ def train_log(X_train, y_train):
     model.fit(X_train_scaled, y_train)
     return model, scaler
 
-def evaluate(model, scaler, X_test, y_test):
-    X_test_scaled = scaler.transform(X_test)
-    y_pred = model.predict(X_test_scaled)
-    y_proba = model.predict_proba(X_test_scaled)[:, 1]
-
-    print(classification_report(y_test, y_pred, target_names=["Graduate", "Dropout"]))
-    print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_proba):.3f}")
 
 
 # XGBoost tree:
@@ -65,11 +58,6 @@ def train_xgboost(X_train, y_train):
     model.fit(X_train, y_train)
     return model
 
-def evaluate_xgb(model, X_test, y_test):
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)[:, 1]
-    print(classification_report(y_test, y_pred, target_names=["Graduate", "Dropout"]))
-    print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_proba):.3f}")
 
 
 # SVM:
@@ -78,13 +66,6 @@ def train_svm(X_train_scaled, y_train):
     model.fit(X_train_scaled, y_train)
     return model
 
-def evaluate_svm(model, scaler, X_test, y_test):
-    X_test_scaled = scaler.transform(X_test)
-    y_pred = model.predict(X_test_scaled)
-    y_score = model.decision_function(X_test_scaled)
-
-    print(classification_report(y_test, y_pred, target_names=["Graduate", "Dropout"]))
-    print(f"PR-AUC (Dropout): {average_precision_score(y_test, y_score):.3f}")
 
 '''
 # Cross Validation: 
@@ -179,26 +160,17 @@ def compare_models_real_cv(X_train, y_train, sim_mask, n_splits=5):
 if __name__ == "__main__":
     X_train, X_test, y_train, y_test, sim_mask = load_processed()
     
-    # Run fixed CV
+    # Cross Validation 
     compare_models_real_cv(X_train, y_train, sim_mask)
 
-    print("Logistic Regression (Test Set Performance):")
-    model, scaler = train_log(X_train, y_train)
-    evaluate(model, scaler, X_test, y_test)
-    coefs = pd.Series(model.coef_[0], index=X_train.columns).sort_values(key=abs, ascending=False)
-    print("\nTop Coefficients:\n", coefs.head(10))
-
-    print("\nXGBoost (Test Set Performance):")
+    # Train final models on the entire training set
+    logreg_model, scaler = train_log(X_train, y_train)
     xgb_model = train_xgboost(X_train, y_train)
-    evaluate_xgb(xgb_model, X_test, y_test)
-
-    print("\nSVM (Test Set Performance):")
     svm_model = train_svm(scaler.transform(X_train), y_train)
-    evaluate_svm(svm_model, scaler, X_test, y_test)
 
     # Save models
     Path("output").mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, "output/logreg.joblib")
+    joblib.dump(logreg_model, "output/logreg.joblib")
     joblib.dump(scaler, "output/scaler.joblib")
     joblib.dump(xgb_model, "output/xgb.joblib")
     joblib.dump(svm_model, "output/svm.joblib")
