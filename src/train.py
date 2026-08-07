@@ -3,8 +3,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-from sklearn.pipeline import Pipeline
+from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
 from sklearn.svm import SVC
 import joblib
@@ -42,8 +41,6 @@ def train_log(X_train, y_train):
     model.fit(X_train_scaled, y_train)
     return model, scaler
 
-
-
 # XGBoost tree:
 def train_xgboost(X_train, y_train):
     scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
@@ -58,8 +55,6 @@ def train_xgboost(X_train, y_train):
     model.fit(X_train, y_train)
     return model
 
-
-
 # SVM:
 def train_svm(X_train_scaled, y_train):
     model = SVC(kernel="linear", class_weight="balanced", random_state=10)
@@ -67,37 +62,7 @@ def train_svm(X_train_scaled, y_train):
     return model
 
 
-'''
-# Cross Validation: 
-def compare_models(X_train, y_train, n_splits=5):
-    cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=10)
-
-    # Logistic Regression    
-    logreg = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=10)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    logreg_scores = cross_val_score(logreg, X_train_scaled, y_train, cv=cv, scoring="average_precision")
-
-    scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
-
-    # XGB tree
-    xgb = XGBClassifier(
-        n_estimators=300, max_depth=4, learning_rate=0.05,
-        scale_pos_weight=scale_pos_weight, eval_metric="aucpr", random_state=10,
-    )
-    xgb_scores = cross_val_score(xgb, X_train, y_train, cv=cv, scoring="average_precision")
-
-    # SVM 
-    svm = SVC(kernel="linear", class_weight="balanced", random_state=10)
-    svm_scores = cross_val_score(svm, X_train_scaled, y_train, cv=cv, scoring="average_precision")
-
-
-    print(f"Logistic Regression PR-AUC: {logreg_scores.mean():.3f} ± {logreg_scores.std():.3f}")
-    print(f"XGBoost PR-AUC:              {xgb_scores.mean():.3f} ± {xgb_scores.std():.3f}")
-    print(f"SVM PR-AUC: {svm_scores.mean():.3f} ± {svm_scores.std():.3f}")
-'''
-
-def compare_models_real_cv(X_train, y_train, sim_mask, n_splits=5):
+def compare_models(X_train, y_train, sim_mask, n_splits=5):
     """
     Cross-validation scheme that validates models strictly on REAL data folds.
     Augments the training fold with synthetic data when available.
@@ -152,16 +117,17 @@ def compare_models_real_cv(X_train, y_train, sim_mask, n_splits=5):
         y_score_svm = svm.decision_function(X_val_scaled)
         svm_scores.append(average_precision_score(y_real_val, y_score_svm))
 
-    print("=== Real-Fold Cross-Validated PR-AUC ===")
+    print("Cross-Validation PR-AUC")
     print(f"Logistic Regression: {np.mean(logreg_scores):.3f} ± {np.std(logreg_scores):.3f}")
     print(f"XGBoost:             {np.mean(xgb_scores):.3f} ± {np.std(xgb_scores):.3f}")
     print(f"SVM:                 {np.mean(svm_scores):.3f} ± {np.std(svm_scores):.3f}\n")
+
 
 if __name__ == "__main__":
     X_train, X_test, y_train, y_test, sim_mask = load_processed()
     
     # Cross Validation 
-    compare_models_real_cv(X_train, y_train, sim_mask)
+    compare_models(X_train, y_train, sim_mask)
 
     # Train final models on the entire training set
     logreg_model, scaler = train_log(X_train, y_train)
