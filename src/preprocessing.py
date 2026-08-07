@@ -58,16 +58,13 @@ LEAKAGE_COLUMNS = [
 ]
 
 REDUNDANT_COLUMNS = [
-    # Structurally embedded in Efficiency 1st sem (= approved / enrolled).
-    # VIF: approved=12.6, efficiency=11.5 when both present — confirmed via
-    # variance_inflation_factor, see exploration notebook.
+    # Structurally embedded in Efficiency 1st sem (= approved / enrolled), including them inflates VIF further without adding signal.
     "Curricular units 1st sem (approved)",
     "Curricular units 1st sem (enrolled)",
-    # Non-significant (Mann-Whitney p_adj > 0.2) and part of the enrolled/
-    # credited/evaluations/without_evaluations near-identity — including them
-    # inflates VIF on approved/efficiency further without adding signal.
+    # Non significant in the exploration notebook.
     "Curricular units 1st sem (credited)",
     "Curricular units 1st sem (evaluations)",
+    "Curricular units 1st sem (without evaluations)",
 ]
 
 NEGLIGIBLE_SIGNAL_COLUMNS = [
@@ -75,12 +72,19 @@ NEGLIGIBLE_SIGNAL_COLUMNS = [
     "Unemployment rate",
     "GDP",
     "Inflation rate",
+    
+    "Mother's qualification",
+    "Father's qualification",
+    "Previous qualification",
+    "Application order",
+
     "International",
     "Educational special needs",
     "Nacionality",
     "Daytime/evening attendance",
     "Marital Status",
     "Displaced",
+    
 ]
 
 # Update the academic qualification for both parents to make it more significant and to get more information
