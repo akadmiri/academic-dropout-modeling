@@ -23,10 +23,8 @@ CONTINUOUS_COLUMNS = [
     "Admission grade",
     "Previous qualification (grade)",
     "Age at enrollment",
-    "Curricular units 1st sem (without evaluations)",
-    "Application order",
 ]
-COUNT_COLUMNS = {"Age at enrollment", "Curricular units 1st sem (without evaluations)", "Application order"}
+COUNT_COLUMNS = {"Age at enrollment"}
 
 GRADE_COLUMN = "Curricular units 1st sem (grade)"
 EVAL_STATUS_COLUMN = "Evaluation status 1st sem"
@@ -34,7 +32,6 @@ EVAL_STATUS_COLUMN = "Evaluation status 1st sem"
 DISCRETE_COLUMNS = [
     "Course", "Application mode",
     "Mother's occupation", "Father's occupation",
-    "Mother's qualification", "Father's qualification", "Previous qualification",
     EVAL_STATUS_COLUMN, "Gender", "Debtor", "Scholarship holder", "Tuition fees up to date",
 ]
 
