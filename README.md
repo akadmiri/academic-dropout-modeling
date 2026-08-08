@@ -306,7 +306,7 @@ Refer to the source files and `RESULTS.md` for the current execution workflow an
 
 ---
 
-## Key Design Decisions
+## Key Decisions
 
 Several decisions are intentional and important to the project.
 
